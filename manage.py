@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import os
-import sys, traceback
+import sys , traceback
 import argparse
 import time
 
@@ -32,17 +32,39 @@ Options for plot-l are `latest`, `all`, `today`.
 
 """
 
-DEF_NUM_PLOTS = 5  # Default Number of Num Plots
-DEF_TILE_FLAG = False  # Default Tile Flag
-DEF_FULL_ROMS_FLAG = False  # Default Full Roms Flag
+DEF_NUM_PLOTS = 5 # Default Number of Num Plots
+DEF_TILE_FLAG = False # Default Tile Flag
+DEF_FULL_ROMS_FLAG = False # Default Full Roms Flag
 
 verbose = 0
 
+def tile_set(id_start, id_end):
+    # Never Needs to be Updated
+    from pl_chop.tasks import tile_overlay
+    # Tile a range of overlays
 
-def download(roms=False, wave=False,
-             wind=False, hycom=False,
-             ncep=False,
+    ids = range(id_start, id_end, 1)
+
+    print "Tiling ids"
+    for f in ids:
+        tile_overlay(f)
+
+def tile(ids):
+    """ Never Needs to be Updated"""
+    from pl_chop.tasks import tile_overlay
+
+    if len(ids) == 0:
+        print "TILE: Empty list of IDS quitting"
+        return 0
+
+    print "TILE: Tiling IDS: ", ids
+
+    for f in ids:
+        tile_overlay(f)
+
+def download(roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline=False,  navy=False,
              num_dl=None):
+
     from pl_download.models import DataFileManager
 
     ids = []
@@ -51,7 +73,7 @@ def download(roms=False, wave=False,
         roms_ids = []
         roms_ids = DataFileManager.download_osu_roms()
         print("OSU ROM dl ids:", roms_ids)
-        ids.append(roms_ids)
+        ids.append(roms_ids) # Update to a dictonary
 
     if wave:
         print "DL: Downloading OSU WW3 files"
@@ -72,7 +94,7 @@ def download(roms=False, wave=False,
         print "DL: Number of downloads specified: ", num_dl
 
         hycom_ids = []
-        hycom_ids = DataFileManager.hycom_download(count=num_dl)
+        hycom_ids = DataFileManager.rtofs_download(count=num_dl)
         print("DL: HYCOM dl ids:", hycom_ids)
         ids.append(hycom_ids)
 
@@ -83,40 +105,26 @@ def download(roms=False, wave=False,
         print("NCEP dl ids:", ncep_ids)
         ids.append(ncep_ids)
 
+    if tcline:
+        print "DL: Downloading OSU t-cline"
+        tcline_ids = []
+        tcline_ids = None
+        print("NCEP dl ids:", tcline_ids)
+        ids.append(tcline_ids)
+
+    if navy:
+        print "DL: Downloading Navy Hycom"
+        navy_ids = []
+        navy_ids = DataFileManager.navy_hycom_download()
+        print ("NAVY HYCOM ids: ", navy_ids)
+        ids.append(navy_ids)
+
     return ids
-
-
-def tile_set(id_start, id_end):
-    from pl_chop.tasks import tile_overlay
-    # Tile a range of overlays
-
-    ids = range(id_start, id_end, 1)
-
-    print "Tiling ids"
-    for f in ids:
-        tile_overlay(f)
-
-
-def tile(ids):
-    from pl_chop.tasks import tile_overlay
-
-    if len(ids) == 0:
-        print "TILE: Empty list of IDS quitting"
-        return 0
-
-    print "TILE: Tiling IDS: ", ids
-
-    for f in ids:
-        tile_overlay(f)
 
 
 def plot(ids,
          num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_ROMS_FLAG,
-         roms=False,
-         wave=False,
-         wind=False,
-         hycom=False,
-         ncep=False):
+         roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline=False, navy=False):
     '''  Just generates plots. You need to pass in the df id to get a plot! Pass it in manually
     or by using one of the functions below which grabs them using the database or via downloading!
     '''
@@ -127,8 +135,6 @@ def plot(ids,
 
     from pl_plot.models import OverlayManager as om
     from pl_chop.tasks import tile_overlay
-
-    if verbose > 0:
 
     if roms:
         roms = []
@@ -234,10 +240,40 @@ def plot(ids,
 
         return
 
+    if tcline:
+        tcline_ids = []
+
+        print ids
+        print "PLOT: Plotting TCLINE with file IDS: ", ids
+        for id in ids:
+            for i in range(num_plots):
+                tcline_ids.append(om.make_plot(settings.OSU_ROMS_TCLINE, i, id))
+
+        if tile:
+            print "PLOT: Tiling tcline"
+            tile(tcline_ids)
+
+        return
+
+    if navy:
+        navy_ids = []
+
+        print ids
+        print "PLOT: Plotting NCEP WW3 with file IDS: ", ids
+        for id in ids:
+            navy_ids.append(om.make_plot(settings.NAVY_HYCOM_SST, 0, id))
+            navy_ids.append(om.make_plot(settings.NAVY_HYCOM_SUR_CUR, 0, id))
+            navy_ids.append(om.make_plot(settings.NAVY_HYCOM_SUR_SAL, 0, id))
+
+
+        if tile:
+            print "PLOT: Tiling NCEP"
+            tile(navy_ids)
+
+        return
 
 def plot_new(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_ROMS_FLAG,
-             roms=False, wave=False, wind=False,
-             hycom=False, ncep=False):
+             roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline=False):
     # num_plots = The number of plots you want for each file - save time!
     # Download and plot the newset freshest files from ze interwebz
 
@@ -248,36 +284,46 @@ def plot_new(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_ROM
         ids = download(roms=True)
         roms = []
 
-        plot(ids, roms=True, num_plots=num_plots, tile=tile, full_roms=full_roms)
+        plot( ids, roms=True, num_plots=num_plots, tile=tile, full_roms=full_roms )
 
     if wave:
         ids = download(wave=True)
         waves = []
 
-        plot(ids, wave=True, num_plots=num_plots, tile=tile)
+        plot( ids, wave=True, num_plots=num_plots, tile=tile )
 
     if wind:
         ids = download(wind=True)
         winds = []
 
-        plot(ids, wind=True, num_plots=num_plots, tile=tile)
+        plot( ids, wind=True, num_plots=num_plots, tile=tile )
 
     if hycom:
         ids = download(hycom=True, num_dl=num_plots)
         hycoms = []
 
-        plot(ids, hycom=True, num_plots=num_plots, tile=tile)
+        plot( ids, hycom=True, num_plots=num_plots, tile=tile )
 
     if ncep:
         ids = download(ncep=True)
         nceps = []
 
-        plot(ids, ncep=True, num_plots=num_plots, tile=tile)
+        plot( ids, ncep=True, num_plots=num_plots, tile=tile )
 
+    if tcline:
+        ids = download(tcline=True)
+        tclines = []
+
+        plot( ids, tcline=True, num_plots=num_plots, tile=tile )
+
+    if navy:
+        ids = download(navy=True)
+        navys = []
+
+        plot( ids, navy=True, num_plots=num_plots, tile=tile )
 
 def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_ROMS_FLAG, date='latest',
-                roms=False, wave=False, wind=False,
-                hycom=False, ncep=False):
+                roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline=False, navy=False):
     # num_plots = The number of plots you want for each file - save time!
     # Pull the latest files from the database and plot those
 
@@ -291,6 +337,7 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
 
     if verbose > 0:
         print "Date span request: ", date
+
 
     # Today
     if date == 'today':
@@ -318,16 +365,16 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         if date == "today":
             ids = df.objects.filter(type='NCDF').get(model_date=today)
         elif date == "latest":
-            ids = dm.get_next_few_datafiles_of_a_type(days=1, type='NCDF')
+            ids = dm.get_next_few_datafiles_of_a_type(days=1, type ='NCDF')
         elif date == "all":
-            ids = df.objects.all().filter(type="NCDF")
+            ids = df.objects.all().filter(type = "NCDF")
 
         for id in ids:
             print id.model_date
 
-        ids = [id.id for id in ids]  # Unwrap ids
+        ids = [id.id for id in ids] # Unwrap ids
 
-        plot(ids, roms=True, num_plots=num_plots, tile=tile, full_roms=full_roms)
+        plot( ids, roms=True, num_plots=num_plots, tile=tile, full_roms=full_roms )
 
     if wave:
         waves = []
@@ -335,13 +382,15 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         if date == "today":
             ids = df.objects.filter(type='WAVE').get(model_date=today)
         elif date == "latest":
-            ids = dm.get_next_few_datafiles_of_a_type(days=1, past_days=1, type='WAVE')
+            ids = dm.get_next_few_datafiles_of_a_type(days=1, past_days=1, type ='WAVE')
         elif date == "all":
-            ids = df.objects.all().filter(type="WAVE")
+            ids = df.objects.all().filter(type = "WAVE")
 
-        ids = [id.id for id in ids]  # Unwrap ids
 
-        plot(ids, wave=True, num_plots=num_plots, tile=tile)
+        ids = [id.id for id in ids] # Unwrap ids
+
+
+        plot( ids, wave=True, num_plots=num_plots, tile=tile )
 
     if wind:
         winds = []
@@ -349,26 +398,26 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         if date is "today":
             ids = df.objects.filter(type='WIND').get(model_date=today)
         elif date is "latest":
-            ids = dm.get_next_few_datafiles_of_a_type(days=1, type='WIND')
+            ids = dm.get_next_few_datafiles_of_a_type(days=1, type ='WIND')
         elif date is "all":
-            ids = df.objects.all().filter(type="WIND")
+            ids = df.objects.all().filter(type = "WIND")
 
-        ids = [id.id for id in ids]  # Unwrap ids
+        ids = [id.id for id in ids] # Unwrap ids
 
-        plot(ids, wind=True, num_plots=num_plots, tile=tile)
+        plot(ids, wind=True, num_plots=num_plots, tile=tile )
 
     if hycom:
         hycoms = []
         if date == "today":
             ids = df.objects.filter(type='HYCOM').get(model_date=today)
         elif date == "latest":
-            ids = dm.get_next_few_datafiles_of_a_type(days=20, type='HYCOM')
+            ids = dm.get_next_few_datafiles_of_a_type(days=20, type ='HYCOM')
         elif date == "all":
-            ids = df.objects.all().filter(type="HYCOM")
+            ids = df.objects.all().filter(type = "HYCOM")
 
-        ids = [id.id for id in ids]  # Unwrap ids
+        ids = [id.id for id in ids] # Unwrap ids
 
-        plot(ids, hycom=True, num_plots=num_plots, tile=tile)
+        plot( ids, hycom=True, num_plots=num_plots, tile=tile )
 
     if ncep:
         nceps = []
@@ -376,12 +425,40 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         if date is "today":
             ids = df.objects.filter(type='NCEP_WW3').get(model_date=today)
         elif date is "latest":
-            ids = dm.get_next_few_datafiles_of_a_type(days=20, type='NCEP_WW3')
+            ids = dm.get_next_few_datafiles_of_a_type(days=20, type ='NCEP_WW3')
         elif date is "all":
-            ids = df.objects.all().filter(type="NCEP_WW3")
+            ids = df.objects.all().filter(type = "NCEP_WW3")
 
-        ids = [id.id for id in ids]  # Unwrap ids
-        plot(ids, ncep=True, num_plots=num_plots, tile=tile)
+        ids = [id.id for id in ids] # Unwrap ids
+        plot( ids, ncep=True, num_plots=num_plots, tile=tile )
+
+    if tcline:
+        tcline = []
+        ids = []
+        if date is "today":
+            ids = df.objects.filter(type='T-CLINE').get(model_date=today)
+        elif date is "latest":
+            ids = dm.get_next_few_datafiles_of_a_type(days=20, type ='T-CLINE')
+        elif date is "all":
+            ids = df.objects.all().filter(type = "T-CLINE")
+
+        ids = [id.id for id in ids] # Unwrap ids
+        plot( ids, tcline=True, num_plots=num_plots, tile=tile )
+
+    if navy:
+        navys = []
+        ids = []
+        if date is "today":
+            ids = df.objects.filter(type='HYCOM').get(model_date=today)
+        elif date is "latest":
+            ids = dm.get_next_few_datafiles_of_a_type(days=20, type ='HYCOM')
+        elif date is "all":
+            ids = df.objects.all().filter(type = "HYCOM")
+
+        ids = [id.id for id in ids] # Unwrap ids
+        plot( ids, navy=True, num_plots=num_plots, tile=tile )
+    print "MANAGE.PY: FINISH TEST"
+
 
 
 if __name__ == "__main__":
@@ -393,39 +470,46 @@ if __name__ == "__main__":
 
     task = parser.add_argument_group('Task', 'The task you want to preform.')
     task.add_argument('task',
-                      help='The manage.py command you want to run. Options are \n' \
-                           "\t 'download' & 'plot'",
-                      type=str)
+                        help='The manage.py command you want to run. Options are \n' \
+                             "\t 'download' & 'plot'",
+                        type=str)
 
     model = parser.add_argument_group('Models', 'Enable models by using these commands')
     model.add_argument("-r", '--roms',
-                       help='Toggle on OSU ROMS in this task call',
-                       action="store_true")
+                        help='Toggle on OSU ROMS in this task call',
+                        action="store_true")
     model.add_argument("-w", '--wave',
-                       help='Toggle on OSU WW3 in this task call',
-                       action="store_true")
+                        help='Toggle on OSU WW3 in this task call',
+                        action="store_true")
     model.add_argument("-n", '--nams',
-                       help='Toggle on NAMS in this task call',
-                       action="store_true")
+                        help='Toggle on NAMS in this task call',
+                        action="store_true")
     model.add_argument("-p", '--hycom',
-                       help='Toggle on HYCOM in this task call',
-                       action="store_true")
+                        help='Toggle on HYCOM in this task call',
+                        action="store_true")
     model.add_argument("-c", '--ncep',
-                       help='Toggle on NCEP WW3 in this task Call',
+                        help='Toggle on NCEP WW3 in this task Call',
+                        action="store_true")
+    model.add_argument("-l", '--cline',
+                       help='Toggle on OSU T/P-CLINE downloads in this task Call',
                        action="store_true")
+    model.add_argument("-y", '--navy',
+                       help='Toggle on NAVY HYCOM in this task Call',
+                       action="store_true")
+
 
     other = parser.add_argument_group('Other')
     other.add_argument("-T", '--tile',
-                       help='Toggle on to produce tiles in plot',
-                       action="store_true")
+                        help='Toggle on to produce tiles in plot',
+                        action="store_true")
     other.add_argument("-k", '--num',
                        help='Number of plots to generate in plot',
                        type=int,
                        default=DEF_NUM_PLOTS)
     other.add_argument("-f", '--fullRoms',
-                       help='Run the full number of roms. Default is True',
-                       type=bool,
-                       default=DEF_FULL_ROMS_FLAG)
+                        help='Run the full number of roms. Default is True',
+                        type=bool,
+                        default=DEF_FULL_ROMS_FLAG)
     other.add_argument("-i", '--ids',
                        help='Toggle on to produce tiles in plot',
                        default=[],
@@ -450,7 +534,9 @@ if __name__ == "__main__":
                        wind=args.nams,
                        hycom=args.hycom,
                        ncep=args.ncep,
-                       num_dl=args.num)
+                       num_dl=args.num,
+                       tcline=args.cline,
+                       navy=args.navy)
         sys.exit()
 
     elif args.task == "plot-all":
@@ -460,7 +546,9 @@ if __name__ == "__main__":
                  wave=args.wave,
                  wind=args.nams,
                  hycom=args.hycom,
-                 ncep=args.ncep)
+                 ncep=args.ncep,
+                 tcline=args.cline,
+                 navy=args.navy)
         sys.exit()
 
     elif args.task == "plot":
@@ -470,18 +558,21 @@ if __name__ == "__main__":
              wave=args.wave,
              wind=args.nams,
              hycom=args.hycom,
-             ncep=args.ncep)
+             ncep=args.ncep,
+             tcline=args.cline)
         sys.exit()
 
     elif args.task == "plot-l":
         plot_latest(num_plots=args.num,
-                    tile=args.tile,
-                    roms=args.roms,
-                    wave=args.wave,
-                    wind=args.nams,
-                    hycom=args.hycom,
-                    ncep=args.ncep,
-                    date=args.date)
+             tile=args.tile,
+             roms=args.roms,
+             wave=args.wave,
+             wind=args.nams,
+             hycom=args.hycom,
+             ncep=args.ncep,
+             tcline=args.ncep,
+             navy=args.navy,
+             date=args.date)
         sys.exit()
 
     elif args.task == 'tile':
@@ -489,7 +580,7 @@ if __name__ == "__main__":
         sys.exit()
 
     elif args.task == "test":
-        pass
+        test()
         sys.exit()
 
     execute_from_command_line(sys.argv)
