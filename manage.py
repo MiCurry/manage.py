@@ -122,12 +122,17 @@ def download(roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline
     return ids
 
 
-def plot(ids,
+def plot(ids=[],
          num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_ROMS_FLAG,
          roms=False, wave=False, wind=False, hycom=False, ncep=False, tcline=False, navy=False):
     '''  Just generates plots. You need to pass in the df id to get a plot! Pass it in manually
     or by using one of the functions below which grabs them using the database or via downloading!
     '''
+    print "IDS", ids
+
+    if not ids:
+        print "PLOT: NO IDS SUBMITTED TO BE PLOTTED - exiting"
+        return
 
     if len(ids) == 0:
         print "PLOT: Empty List of IDS exiting"
@@ -369,8 +374,7 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         elif date == "all":
             ids = df.objects.all().filter(type = "NCDF")
 
-        for id in ids:
-            print id.model_date
+        print ids
 
         ids = [id.id for id in ids] # Unwrap ids
 
@@ -459,6 +463,44 @@ def plot_latest(num_plots=DEF_NUM_PLOTS, tile=DEF_TILE_FLAG, full_roms=DEF_FULL_
         plot( ids, navy=True, num_plots=num_plots, tile=tile )
     print "MANAGE.PY: FINISH TEST"
 
+def test(ids=None):
+    from pl_download.models import DataFile
+    from pl_plot.plotter import NavyPlotter
+    from pl_plot.models import OverlayManager as om
+    print ids
+
+    count = 0
+    print "NAVY HYCOM TEST";
+    for id in ids:
+        count += 1
+        datafile = DataFile.objects.get(pk=id)
+
+        print "DF-ID:", id, "DF: ", count, "OF: ", len(ids), "DF FILENAME: ", datafile.file.name
+        print " TESTING PLOTTER:"
+        plotter = NavyPlotter(datafile.file.name)
+        if plotter:
+            print "  PLOTTER LOADED SUCCESFULLY"
+        else:
+            print "  ERROR: UNABLE TO LOAD FILE: ", datafile.file.name
+
+        print "  NUMBER OF MODEL TIMES: ", plotter.get_number_of_model_times()
+        print "  OCEAN TIME: ", plotter.get_time_at_oceantime_index()
+
+        print " GENERATING PLOT.... "
+
+
+        if datafile.file.name.endswith("ssh.nc"):
+            om.make_plot(settings.NAVY_HYCOM_SUR_CUR, 0, id)
+        if datafile.file.name.endswith("temp_top.nc"):
+            om.make_plot(settings.NAVY_HYCOM_SST, 0, id)
+        if datafile.file.name.endswith("temp_bot.nc"):
+            om.make_plot(settings.NAVY_HYCOM_BOT_TEMP, 0, id)
+        if datafile.file.name.endswith("cur_top.nc"):
+            om.make_plot(settings.NAVY_HYCOM_SUR_CUR, 0, id)
+        if datafile.file.name.endswith("sal_top.nc"):
+            om.make_plot(settings.NAVY_HYCOM_SUR_SAL, 0, id)
+
+
 
 
 if __name__ == "__main__":
@@ -502,24 +544,23 @@ if __name__ == "__main__":
     other.add_argument("-T", '--tile',
                         help='Toggle on to produce tiles in plot',
                         action="store_true")
-    other.add_argument("-k", '--num',
+    other.add_argument("-K", '--num',
                        help='Number of plots to generate in plot',
                        type=int,
                        default=DEF_NUM_PLOTS)
-    other.add_argument("-f", '--fullRoms',
+    other.add_argument("-F", '--fullRoms',
                         help='Run the full number of roms. Default is True',
                         type=bool,
                         default=DEF_FULL_ROMS_FLAG)
-    other.add_argument("-i", '--ids',
+    other.add_argument("-I", '--ids',
                        help='Toggle on to produce tiles in plot',
-                       default=[],
-                       action="append",
+                       nargs="+",
                        dest='ids')
-    other.add_argument("-v", '--verbose',
+    other.add_argument("-V", '--verbose',
                        help='Turn on vebrosity level 0 (default), 1, 2, 3, 9000',
                        default=0,
                        type=int)
-    other.add_argument("-d", '--date',
+    other.add_argument("-D", '--date',
                        help='today, latest, ',
                        type=str)
 
@@ -552,7 +593,8 @@ if __name__ == "__main__":
         sys.exit()
 
     elif args.task == "plot":
-        plot(num_plots=args.num,
+        plot(args.ids,
+             num_plots=args.num,
              tile=args.tile,
              roms=args.roms,
              wave=args.wave,
@@ -580,7 +622,7 @@ if __name__ == "__main__":
         sys.exit()
 
     elif args.task == "test":
-        test()
+        test(ids=args.ids)
         sys.exit()
 
     execute_from_command_line(sys.argv)
